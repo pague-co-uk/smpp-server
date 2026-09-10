@@ -25,11 +25,13 @@ export type SmppAuthenticationResult =
 
 interface SmppAuthenticationApiResponse {
   readonly authenticated: boolean;
+
   readonly reason?:
   | "INVALID_CREDENTIALS"
   | "ACCOUNT_DISABLED"
   | "ACCOUNT_SUSPENDED"
   | "IP_NOT_ALLOWED";
+
   readonly account?: {
     readonly id: string;
     readonly clientId: string;
@@ -53,10 +55,13 @@ export class SmppAuthenticationService {
     const remoteAddress =
       request.remoteAddress;
 
+    const url =
+      `${this.config.api.baseUrl}/smpp-accounts/authenticate`;
+
     try {
       const response =
         await fetch(
-          `${this.config.api.baseUrl}/smpp-accounts/authenticate`,
+          url,
           {
             method: "POST",
 
@@ -82,17 +87,18 @@ export class SmppAuthenticationService {
           {
             systemId:
               request.systemId,
+
             remoteAddress,
+
             status:
               response.status,
           },
           "SMPP authentication API request failed.",
         );
 
-        return {
-          result:
-            SMPP_AUTH_RESULTS.INVALID_SYSTEM_ID,
-        } as const;
+        throw new ServiceUnavailableException(
+          "SMPP authentication service is unavailable.",
+        );
       }
 
       const result =
@@ -105,6 +111,7 @@ export class SmppAuthenticationService {
             {
               systemId:
                 request.systemId,
+
               remoteAddress,
             },
             "SMPP authentication API returned success without account details.",
@@ -142,6 +149,7 @@ export class SmppAuthenticationService {
             {
               systemId:
                 request.systemId,
+
               remoteAddress,
             },
             "SMPP bind rejected: IP address not allowed.",
@@ -158,6 +166,7 @@ export class SmppAuthenticationService {
             {
               systemId:
                 request.systemId,
+
               remoteAddress,
             },
             "SMPP bind rejected: invalid credentials.",
@@ -170,7 +179,8 @@ export class SmppAuthenticationService {
       }
     } catch (error) {
       if (
-        error instanceof ServiceUnavailableException
+        error instanceof
+        ServiceUnavailableException
       ) {
         throw error;
       }
@@ -178,8 +188,10 @@ export class SmppAuthenticationService {
       this.logger.error(
         {
           err: error,
+
           systemId:
             request.systemId,
+
           remoteAddress,
         },
         "Unable to contact SMPP authentication API.",

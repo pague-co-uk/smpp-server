@@ -16,7 +16,14 @@ declare module "smpp" {
     readonly addr_ton: number;
     readonly addr_npi: number;
     readonly address_range: string;
+
+    // submit_sm fields
+    readonly source_addr: string;
+    readonly destination_addr: string;
+    readonly short_message: string;
+    readonly data_coding: number;
   }
+  export type SmppCommand = 'bind_receiver' | 'bind_transmitter' | 'bind_transceiver' | 'submit_sm' | 'submit_sm_resp' | 'deliver_sm' | 'deliver_sm_resp' | 'enquire_link' | 'enquire_link_resp' | 'unbind' | 'unbind_resp' | 'generic_nack';
 
   export interface SmppSession
     extends EventEmitter {
@@ -33,67 +40,72 @@ declare module "smpp" {
     ): boolean;
 
     bind_receiver(
-      options?: Record<string, unknown>,
-      responseCallback?: (
-        pdu: SmppPdu,
-      ) => void,
-      sendCallback?: (
-        pdu: SmppPdu,
-      ) => void,
+      options: {
+        readonly sequence_number: number;
+        readonly command_status: number;
+      },
     ): boolean;
 
     bind_receiver_resp(
-      options?: Record<string, unknown>,
-      responseCallback?: (
-        pdu: SmppPdu,
-      ) => void,
-      sendCallback?: (
-        pdu: SmppPdu,
-      ) => void,
+      options: {
+        readonly sequence_number: number;
+        readonly command_status: number;
+        readonly system_id?: string;
+      },
     ): boolean;
 
     bind_transmitter(
-      options?: Record<string, unknown>,
-      responseCallback?: (
-        pdu: SmppPdu,
-      ) => void,
-      sendCallback?: (
-        pdu: SmppPdu,
-      ) => void,
+      options: {
+        readonly sequence_number: number;
+        readonly command_status: number;
+      },
     ): boolean;
 
     bind_transmitter_resp(
-      options?: Record<string, unknown>,
-      responseCallback?: (
-        pdu: SmppPdu,
-      ) => void,
-      sendCallback?: (
-        pdu: SmppPdu,
-      ) => void,
+      options: {
+        readonly sequence_number: number;
+        readonly command_status: number;
+        readonly system_id?: string;
+      },
     ): boolean;
 
     bind_transceiver(
-      options?: Record<string, unknown>,
-      responseCallback?: (
-        pdu: SmppPdu,
-      ) => void,
-      sendCallback?: (
-        pdu: SmppPdu,
-      ) => void,
+      options: {
+        readonly sequence_number: number;
+        readonly command_status: number;
+      },
     ): boolean;
 
     bind_transceiver_resp(
-      options?: Record<string, unknown>,
-      responseCallback?: (
-        pdu: SmppPdu,
-      ) => void,
-      sendCallback?: (
-        pdu: SmppPdu,
-      ) => void,
+      options: {
+        readonly sequence_number: number;
+        readonly command_status: number;
+        readonly system_id?: string;
+      },
     ): boolean;
 
-    close(): void;
+    submit_sm_resp(options: {
+      readonly sequence_number: number;
+      readonly command_status: number;
+      readonly message_id: string;
+    }): void;
 
+    deliver_sm_resp(options: {
+      readonly sequence_number: number;
+      readonly command_status: number;
+    }): void;
+
+    enquire_link_resp(options: {
+      readonly sequence_number: number;
+      readonly command_status: number;
+    }): void;
+
+    unbind_resp(options: {
+      readonly sequence_number: number;
+      readonly command_status: number;
+    }): void;
+
+    close(): void;
     destroy(): void;
   }
 
@@ -108,7 +120,7 @@ declare module "smpp" {
     ): this;
 
     close(
-      callback?: (error?: Error) => void,
+      callback?: () => void,
     ): this;
   }
 
@@ -121,15 +133,7 @@ declare module "smpp" {
   }
 
   export function createServer(
-    options?: SmppServerOptions,
-    listener?: (
-      session: SmppSession,
-    ) => void,
-  ): SmppServer;
-
-  export function createServer(
-    listener: (
-      session: SmppSession,
-    ) => void,
+    options: SmppServerOptions,
+    listener?: (session: SmppSession) => void,
   ): SmppServer;
 }

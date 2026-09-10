@@ -9,7 +9,9 @@ import * as smpp from "smpp";
 import { AppConfigService } from "../config/config.service.js";
 
 import { SmppBindHandler } from "./smpp-bind.handler.js";
+import { SmppSubmitHandler } from "./smpp-submit-handler.js";
 import { SmppSessionManager } from "./smpp.session-manager.js";
+
 
 @Injectable()
 export class SmppServer {
@@ -24,6 +26,7 @@ export class SmppServer {
     private readonly config: AppConfigService,
     private readonly sessionManager: SmppSessionManager,
     private readonly bindHandler: SmppBindHandler,
+    private readonly submitHandler: SmppSubmitHandler,
   ) { }
 
   public start(): void {
@@ -49,6 +52,10 @@ export class SmppServer {
         smppSession.setConnected();
 
         this.bindHandler.register(
+          smppSession,
+        );
+
+        this.submitHandler.register(
           smppSession,
         );
 
