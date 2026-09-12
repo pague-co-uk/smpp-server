@@ -40,8 +40,10 @@ export default () => ({
     baseUrl:
       process.env.CONTROL_PLANE_API_BASE_URL ??
       "",
+
     apiKey:
-      process.env.MESSAGING_API_KEY ?? "",
+      process.env.MESSAGING_API_KEY ??
+      "",
   },
 
   // ===========================================================================
@@ -64,21 +66,21 @@ export default () => ({
       "1.0.0",
 
     tracesEndpoint:
-      process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ??
-      "http://localhost:4318/v1/traces",
+      process.env.OTEL_TRACES_ENDPOINT ??
+      "",
 
     metricsEndpoint:
-      process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ??
-      "http://localhost:4318/v1/metrics",
+      process.env.OTEL_METRICS_ENDPOINT ??
+      "",
 
     logsEndpoint:
-      process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ??
-      "http://localhost:4318/v1/logs",
+      process.env.OTEL_LOGS_ENDPOINT ??
+      "",
 
     exportIntervalMillis:
       Number.parseInt(
-        process.env.OTEL_METRIC_EXPORT_INTERVAL ??
-        "60000",
+        process.env.OTEL_EXPORT_INTERVAL_MILLIS ??
+        "10000",
         10,
       ),
 
@@ -102,12 +104,12 @@ export default () => ({
 
     file: {
       enabled:
-        process.env.LOG_FILE ===
+        process.env.LOG_FILE_ENABLED ===
         "true",
 
       path:
         process.env.LOG_FILE_PATH ??
-        "./logs/smpp-server.log",
+        "/var/log/pague/smpp-server/application.log",
     },
   },
 
@@ -148,5 +150,4 @@ export default () => ({
         10,
       ),
   },
-
 });

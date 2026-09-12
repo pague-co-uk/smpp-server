@@ -58,6 +58,7 @@ export const configValidationSchema =
             ),
         )
         .required(),
+
     MESSAGING_API_KEY:
       Joi.string()
         .trim()
@@ -125,7 +126,7 @@ export const configValidationSchema =
         )
         .default(true),
 
-    LOG_FILE:
+    LOG_FILE_ENABLED:
       Joi.boolean()
         .truthy(
           "true",
@@ -140,7 +141,7 @@ export const configValidationSchema =
     LOG_FILE_PATH:
       Joi.string()
         .default(
-          "./logs/smpp-server.log",
+          "/var/log/pague/smpp-server/application.log",
         ),
 
     // =========================================================================
@@ -157,7 +158,7 @@ export const configValidationSchema =
           "false",
           "0",
         )
-        .default(true),
+        .default(false),
 
     OTEL_SERVICE_NAME:
       Joi.string()
@@ -167,32 +168,26 @@ export const configValidationSchema =
       Joi.string()
         .default("1.0.0"),
 
-    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:
+    OTEL_TRACES_ENDPOINT:
       Joi.string()
         .allow("")
-        .default(
-          "http://localhost:4318/v1/traces",
-        ),
+        .default(""),
 
-    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:
+    OTEL_METRICS_ENDPOINT:
       Joi.string()
         .allow("")
-        .default(
-          "http://localhost:4318/v1/metrics",
-        ),
+        .default(""),
 
-    OTEL_EXPORTER_OTLP_LOGS_ENDPOINT:
+    OTEL_LOGS_ENDPOINT:
       Joi.string()
         .allow("")
-        .default(
-          "http://localhost:4318/v1/logs",
-        ),
+        .default(""),
 
-    OTEL_METRIC_EXPORT_INTERVAL:
+    OTEL_EXPORT_INTERVAL_MILLIS:
       Joi.number()
         .integer()
         .min(100)
-        .default(60000),
+        .default(10000),
 
     OTEL_DISABLE_FS_INSTRUMENTATION:
       Joi.boolean()

@@ -56,29 +56,16 @@ export class AppConfigService {
         this.config.getOrThrow<string>(
           "api.prefix",
         ),
+
       baseUrl:
         this.config.getOrThrow<string>(
-          "api.baseUrl"
+          "api.baseUrl",
         ),
+
       apiKey:
         this.config.getOrThrow<string>(
           "api.apiKey",
         ),
-    };
-  }
-
-  // =========================================================================
-  // Authentication / Security
-  // =========================================================================
-
-  get auth() {
-    return {
-      security: {
-        secretHashKey:
-          this.config.getOrThrow<string>(
-            "auth.security.secretHashKey",
-          ),
-      },
     };
   }
 
@@ -129,6 +116,7 @@ export class AppConfigService {
         ),
     };
   }
+
   // =========================================================================
   // Logging
   // =========================================================================
@@ -145,13 +133,17 @@ export class AppConfigService {
           "log.stdout",
         ),
 
-      file:
-        this.config.getOrThrow<{
-          enabled: boolean;
-          path: string;
-        }>(
-          "log.file",
-        ),
+      file: {
+        enabled:
+          this.config.getOrThrow<boolean>(
+            "log.file.enabled",
+          ),
+
+        path:
+          this.config.getOrThrow<string>(
+            "log.file.path",
+          ),
+      },
     };
   }
 
