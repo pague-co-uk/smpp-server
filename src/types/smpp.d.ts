@@ -2,6 +2,20 @@ declare module "smpp" {
   import type { EventEmitter } from "node:events";
   import type { Socket } from "node:net";
 
+  export type SmppShortMessage =
+    | string
+    | Buffer
+    | Uint8Array
+    | {
+      readonly udh?:
+      | Buffer
+      | readonly Buffer[];
+      readonly message:
+      | string
+      | Buffer
+      | Uint8Array;
+    };
+
   export interface SmppPdu {
     readonly command: string;
     readonly command_length: number;
@@ -20,10 +34,24 @@ declare module "smpp" {
     // submit_sm fields
     readonly source_addr: string;
     readonly destination_addr: string;
-    readonly short_message: string;
+    readonly esm_class: number;
+    readonly short_message: SmppShortMessage;
     readonly data_coding: number;
   }
-  export type SmppCommand = 'bind_receiver' | 'bind_transmitter' | 'bind_transceiver' | 'submit_sm' | 'submit_sm_resp' | 'deliver_sm' | 'deliver_sm_resp' | 'enquire_link' | 'enquire_link_resp' | 'unbind' | 'unbind_resp' | 'generic_nack';
+
+  export type SmppCommand =
+    | "bind_receiver"
+    | "bind_transmitter"
+    | "bind_transceiver"
+    | "submit_sm"
+    | "submit_sm_resp"
+    | "deliver_sm"
+    | "deliver_sm_resp"
+    | "enquire_link"
+    | "enquire_link_resp"
+    | "unbind"
+    | "unbind_resp"
+    | "generic_nack";
 
   export interface SmppSession
     extends EventEmitter {

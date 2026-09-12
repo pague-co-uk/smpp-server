@@ -9,13 +9,13 @@ import * as smpp from "smpp";
 import { AppConfigService } from "../config/config.service.js";
 
 import { SmppBindHandler } from "./smpp-bind.handler.js";
-import { SmppSubmitHandler } from "./smpp-submit-handler.js";
+import { SmppCommandHandler } from "./smpp-command.handler.js";
 import { SmppSessionManager } from "./smpp.session-manager.js";
-
 
 @Injectable()
 export class SmppServer {
-  private readonly logger = Loggers.smpp;
+  private readonly logger =
+    Loggers.smpp;
 
   private server:
     smpp.SmppServer | undefined;
@@ -23,10 +23,17 @@ export class SmppServer {
   private started = false;
 
   constructor(
-    private readonly config: AppConfigService,
-    private readonly sessionManager: SmppSessionManager,
-    private readonly bindHandler: SmppBindHandler,
-    private readonly submitHandler: SmppSubmitHandler,
+    private readonly config:
+      AppConfigService,
+
+    private readonly sessionManager:
+      SmppSessionManager,
+
+    private readonly bindHandler:
+      SmppBindHandler,
+
+    private readonly commandHandler:
+      SmppCommandHandler,
   ) { }
 
   public start(): void {
@@ -39,38 +46,53 @@ export class SmppServer {
       port,
     } = this.config.smpp;
 
-    this.server = smpp.createServer(
-      {
-        debug: false,
-      },
-      (session) => {
-        const smppSession =
-          this.sessionManager.create(
-            session,
+    this.server =
+      smpp.createServer(
+        {
+          debug: false,
+        },
+        (session) => {
+          const smppSession =
+            this.sessionManager.create(
+              session,
+            );
+
+          smppSession.setConnected();
+
+          /*
+           * Bind commands are handled exclusively
+           * by SmppBindHandler.
+           */
+          this.bindHandler.register(
+            smppSession,
           );
 
-        smppSession.setConnected();
+          /*
+           * All non-bind SMPP commands are handled
+           * centrally by SmppCommandHandler.
+           *
+           * This replaces the former SmppSubmitHandler
+           * and prevents duplicate submit_sm listeners.
+           */
+          this.commandHandler.register(
+            smppSession,
+          );
 
-        this.bindHandler.register(
-          smppSession,
-        );
+          this.logger.info(
+            {
+              sessionId:
+                smppSession.id,
 
-        this.submitHandler.register(
-          smppSession,
-        );
+              remoteAddress:
+                session.socket.remoteAddress,
 
-        this.logger.info(
-          {
-            sessionId: smppSession.id,
-            remoteAddress:
-              session.socket.remoteAddress,
-            remotePort:
-              session.socket.remotePort,
-          },
-          "SMPP client connected.",
-        );
-      },
-    );
+              remotePort:
+                session.socket.remotePort,
+            },
+            "SMPP client connected.",
+          );
+        },
+      );
 
     this.server.listen(
       port,
@@ -94,6 +116,7 @@ export class SmppServer {
         this.logger.error(
           {
             err: error,
+
             host,
             port,
           },

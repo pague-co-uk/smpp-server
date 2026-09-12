@@ -58,6 +58,11 @@ export const configValidationSchema =
             ),
         )
         .required(),
+    MESSAGING_API_KEY:
+      Joi.string()
+        .trim()
+        .min(1)
+        .required(),
 
     // =========================================================================
     // SMPP

@@ -41,6 +41,17 @@ interface SmppAuthenticationApiResponse {
   };
 }
 
+interface SmppAuthenticationApiEnvelope {
+  readonly success: boolean;
+
+  readonly data: SmppAuthenticationApiResponse;
+
+  readonly meta?: {
+    readonly requestId?: string;
+    readonly timestamp?: string;
+  };
+}
+
 @Injectable()
 export class SmppAuthenticationService {
   private readonly logger = Loggers.smpp;
@@ -57,6 +68,18 @@ export class SmppAuthenticationService {
 
     const url =
       `${this.config.api.baseUrl}/smpp-accounts/authenticate`;
+
+    this.logger.info(
+      {
+        systemId:
+          request.systemId,
+
+        remoteAddress,
+
+        url,
+      },
+      "Sending SMPP authentication request to Control Plane API.",
+    );
 
     try {
       const response =
@@ -82,6 +105,55 @@ export class SmppAuthenticationService {
           },
         );
 
+      let responseBody:
+        | SmppAuthenticationApiEnvelope
+        | undefined;
+
+      try {
+        responseBody =
+          await response.json() as
+          SmppAuthenticationApiEnvelope;
+      } catch (error) {
+        this.logger.error(
+          {
+            err:
+              error,
+
+            systemId:
+              request.systemId,
+
+            remoteAddress,
+
+            status:
+              response.status,
+          },
+          "SMPP authentication API returned invalid JSON.",
+        );
+
+        throw new ServiceUnavailableException(
+          "SMPP authentication service returned an invalid response.",
+        );
+      }
+
+      this.logger.info(
+        {
+          systemId:
+            request.systemId,
+
+          remoteAddress,
+
+          status:
+            response.status,
+
+          ok:
+            response.ok,
+
+          response:
+            responseBody,
+        },
+        "Received SMPP authentication API response.",
+      );
+
       if (!response.ok) {
         this.logger.error(
           {
@@ -92,6 +164,9 @@ export class SmppAuthenticationService {
 
             status:
               response.status,
+
+            response:
+              responseBody,
           },
           "SMPP authentication API request failed.",
         );
@@ -101,9 +176,61 @@ export class SmppAuthenticationService {
         );
       }
 
+      if (
+        !responseBody ||
+        !responseBody.data
+      ) {
+        this.logger.error(
+          {
+            systemId:
+              request.systemId,
+
+            remoteAddress,
+
+            response:
+              responseBody,
+          },
+          "SMPP authentication API returned an invalid response.",
+        );
+
+        throw new ServiceUnavailableException(
+          "SMPP authentication service returned an invalid response.",
+        );
+      }
+
       const result =
-        await response.json() as
-        SmppAuthenticationApiResponse;
+        responseBody.data;
+
+      this.logger.info(
+        {
+          systemId:
+            request.systemId,
+
+          remoteAddress,
+
+          authenticated:
+            result.authenticated,
+
+          reason:
+            result.reason,
+
+          accountId:
+            result.account?.id,
+
+          clientId:
+            result.account?.clientId,
+
+          accountSystemId:
+            result.account?.systemId,
+
+          maxConcurrentBinds:
+            result.account?.maxConcurrentBinds,
+
+          enquireLinkInterval:
+            result.account?.enquireLinkInterval,
+        },
+        "Parsed SMPP authentication result.",
+      );
 
       if (result.authenticated) {
         if (!result.account) {
@@ -122,6 +249,28 @@ export class SmppAuthenticationService {
           );
         }
 
+        this.logger.info(
+          {
+            systemId:
+              request.systemId,
+
+            remoteAddress,
+
+            accountId:
+              result.account.id,
+
+            clientId:
+              result.account.clientId,
+
+            maxConcurrentBinds:
+              result.account.maxConcurrentBinds,
+
+            enquireLinkInterval:
+              result.account.enquireLinkInterval,
+          },
+          "SMPP authentication successful.",
+        );
+
         return {
           result:
             SMPP_AUTH_RESULTS.SUCCESS,
@@ -133,12 +282,32 @@ export class SmppAuthenticationService {
 
       switch (result.reason) {
         case "ACCOUNT_DISABLED":
+          this.logger.warn(
+            {
+              systemId:
+                request.systemId,
+
+              remoteAddress,
+            },
+            "SMPP bind rejected: account disabled.",
+          );
+
           return {
             result:
               SMPP_AUTH_RESULTS.ACCOUNT_DISABLED,
           } as const;
 
         case "ACCOUNT_SUSPENDED":
+          this.logger.warn(
+            {
+              systemId:
+                request.systemId,
+
+              remoteAddress,
+            },
+            "SMPP bind rejected: account suspended.",
+          );
+
           return {
             result:
               SMPP_AUTH_RESULTS.ACCOUNT_SUSPENDED,
@@ -168,6 +337,9 @@ export class SmppAuthenticationService {
                 request.systemId,
 
               remoteAddress,
+
+              reason:
+                result.reason,
             },
             "SMPP bind rejected: invalid credentials.",
           );
@@ -187,7 +359,8 @@ export class SmppAuthenticationService {
 
       this.logger.error(
         {
-          err: error,
+          err:
+            error,
 
           systemId:
             request.systemId,

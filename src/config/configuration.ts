@@ -40,6 +40,8 @@ export default () => ({
     baseUrl:
       process.env.CONTROL_PLANE_API_BASE_URL ??
       "",
+    apiKey:
+      process.env.MESSAGING_API_KEY ?? "",
   },
 
   // ===========================================================================

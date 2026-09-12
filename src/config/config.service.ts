@@ -56,7 +56,14 @@ export class AppConfigService {
         this.config.getOrThrow<string>(
           "api.prefix",
         ),
-      baseUrl: this.config.getOrThrow<string>("api.baseUrl")
+      baseUrl:
+        this.config.getOrThrow<string>(
+          "api.baseUrl"
+        ),
+      apiKey:
+        this.config.getOrThrow<string>(
+          "api.apiKey",
+        ),
     };
   }
 

@@ -5,9 +5,7 @@ import {
   Loggers,
 } from "@pague-co-uk/sms-gateway-telemetry";
 
-import type {
-  SmppPdu,
-} from "smpp";
+import type { SmppPdu } from "smpp";
 
 import {
   SMPP_SESSION_STATES,
@@ -22,8 +20,16 @@ import {
 } from "./smpp-submit.service.js";
 
 import {
+  SmppMessageReassembler,
+} from "./smpp-message-re-assembler.js";
+
+import {
   SmppSession,
 } from "./smpp.session.js";
+
+import {
+  SmppSessionManager,
+} from "./smpp.session-manager.js";
 
 import {
   toTelemetrySmppSessionState,
@@ -31,17 +37,25 @@ import {
 
 const SMPP_COMMAND_STATUS = {
   ESME_ROK: 0x00000000,
+
   ESME_RINVBNDSTS: 0x00000004,
+
   ESME_RSYSERR: 0x00000008,
 } as const;
 
 const SMPP_COMMANDS = {
   SUBMIT_SM: "submit_sm",
+
   DELIVER_SM: "deliver_sm",
+
   ENQUIRE_LINK: "enquire_link",
+
   UNBIND: "unbind",
+
   BIND_TRANSMITTER: "bind_transmitter",
+
   BIND_RECEIVER: "bind_receiver",
+
   BIND_TRANSCEIVER: "bind_transceiver",
 } as const;
 
@@ -56,10 +70,44 @@ type SmppCommand =
 
 @Injectable()
 export class SmppCommandHandler {
-  private readonly logger = Loggers.smpp;
+  private readonly logger =
+    Loggers.smpp;
 
   private readonly lifecycle =
     getSmppLifecycle();
+
+  /**
+   * One reassembler per SMPP session.
+   *
+   * A multipart message must never be reassembled
+   * across different ESME connections.
+   */
+  private readonly reassemblers =
+    new Map<
+      string,
+      SmppMessageReassembler
+    >();
+
+  /**
+   * One expiry timer per SMPP session.
+   *
+   * The timer periodically asks the session's
+   * reassembler to expire incomplete multipart messages.
+   */
+  private readonly reassemblyTimers =
+    new Map<
+      string,
+      NodeJS.Timeout
+    >();
+
+  /**
+   * How frequently incomplete multipart messages are
+   * checked for expiry.
+   *
+   * The reassembler itself owns the actual TTL.
+   */
+  private static readonly REASSEMBLY_EXPIRY_INTERVAL_MS =
+    30 * 1000;
 
   constructor(
     private readonly authorization:
@@ -67,11 +115,27 @@ export class SmppCommandHandler {
 
     private readonly submissions:
       SmppSubmitService,
+
+    private readonly sessionManager:
+      SmppSessionManager,
   ) { }
 
   public register(
     session: SmppSession,
   ): void {
+    const reassembler =
+      new SmppMessageReassembler();
+
+    this.reassemblers.set(
+      session.id,
+      reassembler,
+    );
+
+    this.startReassemblyExpiry(
+      session,
+      reassembler,
+    );
+
     session.raw.on(
       "pdu",
       (pdu: SmppPdu) => {
@@ -81,6 +145,165 @@ export class SmppCommandHandler {
         );
       },
     );
+
+    /*
+     * The reassembler belongs to this session.
+     * Release it as soon as the SMPP connection closes.
+     */
+    session.raw.on(
+      "close",
+      () => {
+        this.stopReassemblyExpiry(
+          session.id,
+        );
+
+        reassembler.clear();
+
+        this.reassemblers.delete(
+          session.id,
+        );
+
+        this.logger.debug(
+          {
+            sessionId:
+              session.id,
+          },
+          "SMPP message reassembler cleared.",
+        );
+      },
+    );
+  }
+
+  /**
+   * Start the expiry scheduler for a session.
+   */
+  private startReassemblyExpiry(
+    session: SmppSession,
+    reassembler: SmppMessageReassembler,
+  ): void {
+    const timer =
+      setInterval(
+        () => {
+          this.expireReassembly(
+            session,
+            reassembler,
+          );
+        },
+        SmppCommandHandler.REASSEMBLY_EXPIRY_INTERVAL_MS,
+      );
+
+    /*
+     * Do not allow the timer to keep the Node.js process
+     * alive during shutdown.
+     */
+    timer.unref();
+
+    this.reassemblyTimers.set(
+      session.id,
+      timer,
+    );
+  }
+
+  /**
+   * Stop the expiry scheduler for a session.
+   */
+  private stopReassemblyExpiry(
+    sessionId: string,
+  ): void {
+    const timer =
+      this.reassemblyTimers.get(
+        sessionId,
+      );
+
+    if (!timer) {
+      return;
+    }
+
+    clearInterval(timer);
+
+    this.reassemblyTimers.delete(
+      sessionId,
+    );
+  }
+
+  /**
+   * Expire incomplete multipart messages for a session
+   * and reject every submit_sm PDU that belongs to an
+   * expired logical message.
+   */
+  private expireReassembly(
+    session: SmppSession,
+    reassembler: SmppMessageReassembler,
+  ): void {
+    /*
+     * A closed session cannot receive SMPP responses.
+     *
+     * Its close handler will clear the reassembler.
+     */
+    if (
+      session.currentState ===
+      SMPP_SESSION_STATES.CLOSED
+    ) {
+      return;
+    }
+
+    const expired =
+      reassembler.expire();
+
+    if (
+      expired.length === 0
+    ) {
+      return;
+    }
+
+    for (
+      const message of expired
+    ) {
+      const sequenceNumbers =
+        message.acknowledgementParts.map(
+          (part) =>
+            part.sequence_number,
+        );
+
+      this.logger.warn(
+        {
+          sessionId:
+            session.id,
+
+          clientId:
+            session.authenticatedClientId,
+
+          accountId:
+            session.authenticatedAccountId,
+
+          systemId:
+            session.authenticatedSystemId,
+
+          referenceNumber:
+            message.referenceNumber,
+
+          totalSegments:
+            message.totalSegments,
+
+          receivedSegments:
+            message.parts.length,
+
+          sequenceNumbers,
+        },
+        "SMPP multipart message expired before all segments were received.",
+      );
+
+      /*
+       * Reject every original submit_sm PDU that was
+       * received for this logical message.
+       */
+      this.sendSubmitSmResponses(
+        session,
+        message.acknowledgementParts,
+        SMPP_COMMAND_STATUS.ESME_RSYSERR,
+        "",
+      );
+    }
   }
 
   private async handlePdu(
@@ -113,10 +336,6 @@ export class SmppCommandHandler {
     /*
      * Bind commands are handled exclusively by
      * SmppBindHandler.
-     *
-     * Both handlers listen to the same underlying
-     * SMPP session, so bind commands must not be
-     * dispatched here.
      */
     if (
       command ===
@@ -134,6 +353,7 @@ export class SmppCommandHandler {
         {
           pdu: {
             command,
+
             sequenceNumber:
               pdu.sequence_number,
           },
@@ -248,7 +468,8 @@ export class SmppCommandHandler {
         command_status:
           SMPP_COMMAND_STATUS.ESME_RINVBNDSTS,
 
-        message_id: "",
+        message_id:
+          "",
       });
 
       return;
@@ -283,43 +504,329 @@ export class SmppCommandHandler {
         command_status:
           SMPP_COMMAND_STATUS.ESME_RINVBNDSTS,
 
-        message_id: "",
+        message_id:
+          "",
       });
 
       return;
     }
 
-    try {
-      const result =
-        await this.submissions.submit(
-          session,
-          pdu,
-        );
+    const reassembler =
+      this.reassemblers.get(
+        session.id,
+      );
 
-      if (!result.accepted) {
-        session.sendSubmitSmResponse({
-          sequence_number:
+    if (!reassembler) {
+      this.logger.error(
+        {
+          sessionId:
+            session.id,
+
+          sequenceNumber:
             pdu.sequence_number,
-
-          command_status:
-            SMPP_COMMAND_STATUS.ESME_RSYSERR,
-
-          message_id: "",
-        });
-
-        return;
-      }
+        },
+        "SMPP message reassembler is not registered for the session.",
+      );
 
       session.sendSubmitSmResponse({
         sequence_number:
           pdu.sequence_number,
 
         command_status:
-          SMPP_COMMAND_STATUS.ESME_ROK,
+          SMPP_COMMAND_STATUS.ESME_RSYSERR,
 
         message_id:
-          result.publicId ?? "",
+          "",
       });
+
+      return;
+    }
+
+    try {
+      const reassembly =
+        reassembler.accept(
+          pdu,
+        );
+
+      /*
+       * Multipart message is incomplete.
+       *
+       * Do not call the Control Plane API and do not
+       * acknowledge the PDU yet.
+       */
+      if (
+        reassembly.pending
+      ) {
+        this.logger.debug(
+          {
+            sessionId:
+              session.id,
+
+            clientId:
+              session.authenticatedClientId,
+
+            accountId:
+              session.authenticatedAccountId,
+
+            systemId:
+              session.authenticatedSystemId,
+
+            sequenceNumber:
+              pdu.sequence_number,
+
+            duplicate:
+              reassembly.duplicate,
+
+            pendingCount:
+              reassembler.pendingCount,
+          },
+          reassembly.duplicate
+            ? "Duplicate SMPP submit_sm segment received and retained for acknowledgement."
+            : "SMPP submit_sm segment buffered awaiting remaining segments.",
+        );
+
+        return;
+      }
+
+      /*
+       * A duplicate cannot be submitted as a second logical
+       * segment. If the logical message is already complete,
+       * the duplicate would belong to a new logical message
+       * and would therefore be processed through a separate
+       * reassembly lifecycle.
+       *
+       * This branch primarily protects against an unexpected
+       * reassembler state.
+       */
+      if (
+        reassembly.duplicate
+      ) {
+        this.logger.debug(
+          {
+            sessionId:
+              session.id,
+
+            sequenceNumber:
+              pdu.sequence_number,
+          },
+          "Duplicate SMPP submit_sm segment ignored.",
+        );
+
+        return;
+      }
+
+      /*
+       * Normal single-part message.
+       */
+      if (
+        !reassembly.complete ||
+        !reassembly.reassembled
+      ) {
+        const result =
+          await this.submissions.submit(
+            session,
+            pdu,
+          );
+
+        if (!result.accepted) {
+          this.logger.error(
+            {
+              sessionId:
+                session.id,
+
+              clientId:
+                session.authenticatedClientId,
+
+              accountId:
+                session.authenticatedAccountId,
+
+              systemId:
+                session.authenticatedSystemId,
+
+              sequenceNumber:
+                pdu.sequence_number,
+            },
+            "SMPP submit_sm was rejected.",
+          );
+
+          session.sendSubmitSmResponse({
+            sequence_number:
+              pdu.sequence_number,
+
+            command_status:
+              SMPP_COMMAND_STATUS.ESME_RSYSERR,
+
+            message_id:
+              "",
+          });
+
+          return;
+        }
+
+        const messageId =
+          result.publicId ?? "";
+
+        session.sendSubmitSmResponse({
+          sequence_number:
+            pdu.sequence_number,
+
+          command_status:
+            SMPP_COMMAND_STATUS.ESME_ROK,
+
+          message_id:
+            messageId,
+        });
+
+        this.logger.info(
+          {
+            sessionId:
+              session.id,
+
+            clientId:
+              session.authenticatedClientId,
+
+            accountId:
+              session.authenticatedAccountId,
+
+            systemId:
+              session.authenticatedSystemId,
+
+            bindType:
+              session.currentBindType,
+
+            sequenceNumber:
+              pdu.sequence_number,
+
+            messageId,
+          },
+          "SMPP submit_sm accepted.",
+        );
+
+        return;
+      }
+
+      const reassembled =
+        reassembly.message;
+
+      if (!reassembled) {
+        throw new Error(
+          "SMPP reassembler reported a complete message without a reassembled message.",
+        );
+      }
+
+      const sequenceNumbers =
+        reassembled.parts.map(
+          (part) =>
+            part.sequence_number,
+        );
+
+      const acknowledgementSequenceNumbers =
+        reassembled.acknowledgementParts.map(
+          (part) =>
+            part.sequence_number,
+        );
+
+      this.logger.info(
+        {
+          sessionId:
+            session.id,
+
+          clientId:
+            session.authenticatedClientId,
+
+          accountId:
+            session.authenticatedAccountId,
+
+          systemId:
+            session.authenticatedSystemId,
+
+          referenceNumber:
+            reassembled.referenceNumber,
+
+          totalSegments:
+            reassembled.totalSegments,
+
+          segmentCount:
+            reassembled.parts.length,
+
+          sequenceNumbers,
+
+          acknowledgementSequenceNumbers,
+
+          dataCoding:
+            reassembled.pdu.data_coding,
+        },
+        "SMPP multipart message fully reassembled.",
+      );
+
+      /*
+       * Exactly ONE API request is made for the entire
+       * multipart logical message.
+       */
+      const result =
+        await this.submissions.submit(
+          session,
+          reassembled.pdu,
+        );
+
+      if (!result.accepted) {
+        this.logger.error(
+          {
+            sessionId:
+              session.id,
+
+            clientId:
+              session.authenticatedClientId,
+
+            accountId:
+              session.authenticatedAccountId,
+
+            systemId:
+              session.authenticatedSystemId,
+
+            referenceNumber:
+              reassembled.referenceNumber,
+
+            totalSegments:
+              reassembled.totalSegments,
+
+            sequenceNumbers:
+              acknowledgementSequenceNumbers,
+          },
+          "Reassembled SMPP message was rejected.",
+        );
+
+        /*
+         * The logical message was rejected.
+         *
+         * Reject EVERY original submit_sm PDU, including
+         * duplicate segments.
+         */
+        this.sendSubmitSmResponses(
+          session,
+          reassembled.acknowledgementParts,
+          SMPP_COMMAND_STATUS.ESME_RSYSERR,
+          "",
+        );
+
+        return;
+      }
+
+      const messageId =
+        result.publicId ?? "";
+
+      /*
+       * The API accepted ONE logical message.
+       *
+       * Acknowledge EVERY original submit_sm PDU, including
+       * duplicate segments.
+       */
+      this.sendSubmitSmResponses(
+        session,
+        reassembled.acknowledgementParts,
+        SMPP_COMMAND_STATUS.ESME_ROK,
+        messageId,
+      );
 
       this.logger.info(
         {
@@ -338,10 +845,19 @@ export class SmppCommandHandler {
           bindType:
             session.currentBindType,
 
-          sequenceNumber:
-            pdu.sequence_number,
+          referenceNumber:
+            reassembled.referenceNumber,
+
+          totalSegments:
+            reassembled.totalSegments,
+
+          sequenceNumbers,
+
+          acknowledgementSequenceNumbers,
+
+          messageId,
         },
-        "SMPP submit_sm accepted.",
+        "SMPP multipart message accepted.",
       );
     } catch (error) {
       this.logger.error(
@@ -357,6 +873,9 @@ export class SmppCommandHandler {
           accountId:
             session.authenticatedAccountId,
 
+          systemId:
+            session.authenticatedSystemId,
+
           sequenceNumber:
             pdu.sequence_number,
         },
@@ -370,7 +889,30 @@ export class SmppCommandHandler {
         command_status:
           SMPP_COMMAND_STATUS.ESME_RSYSERR,
 
-        message_id: "",
+        message_id:
+          "",
+      });
+    }
+  }
+
+  private sendSubmitSmResponses(
+    session: SmppSession,
+    parts: readonly SmppPdu[],
+    commandStatus: number,
+    messageId: string,
+  ): void {
+    for (
+      const part of parts
+    ) {
+      session.sendSubmitSmResponse({
+        sequence_number:
+          part.sequence_number,
+
+        command_status:
+          commandStatus,
+
+        message_id:
+          messageId,
       });
     }
   }
@@ -438,13 +980,6 @@ export class SmppCommandHandler {
       return;
     }
 
-    /*
-     * deliver_sm is normally generated by the gateway
-     * towards a RECEIVER or TRANSCEIVER ESME.
-     *
-     * The actual delivery mechanism will be implemented
-     * when the message/status pipeline is wired.
-     */
     this.logger.info(
       {
         sessionId:
@@ -505,6 +1040,38 @@ export class SmppCommandHandler {
     session: SmppSession,
     pdu: SmppPdu,
   ): void {
+    if (
+      session.currentState !==
+      SMPP_SESSION_STATES.BOUND
+    ) {
+      session.sendUnbindResponse({
+        sequence_number:
+          pdu.sequence_number,
+
+        command_status:
+          SMPP_COMMAND_STATUS.ESME_RINVBNDSTS,
+      });
+
+      this.logger.warn(
+        {
+          sessionId:
+            session.id,
+
+          sequenceNumber:
+            pdu.sequence_number,
+        },
+        "SMPP unbind rejected because the session is not bound.",
+      );
+
+      return;
+    }
+
+    this.sessionManager.releaseBind(
+      session.id,
+    );
+
+    session.setUnbound();
+
     session.sendUnbindResponse({
       sequence_number:
         pdu.sequence_number,
@@ -512,8 +1079,6 @@ export class SmppCommandHandler {
       command_status:
         SMPP_COMMAND_STATUS.ESME_ROK,
     });
-
-    session.setUnbound();
 
     this.logger.info(
       {
