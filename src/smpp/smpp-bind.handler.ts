@@ -142,7 +142,7 @@ export class SmppBindHandler {
       bindType,
 
       remoteAddress:
-        session.socket.remoteAddress,
+        session.remoteAddress,
     };
 
     try {
@@ -176,6 +176,9 @@ export class SmppBindHandler {
               pdu.system_id,
 
             bindType,
+
+            remoteAddress:
+              session.remoteAddress,
 
             result:
               result.result,
@@ -225,6 +228,9 @@ export class SmppBindHandler {
 
             bindType,
 
+            remoteAddress:
+              session.remoteAddress,
+
             maxConcurrentBinds:
               result.account.maxConcurrentBinds,
           },
@@ -271,6 +277,9 @@ export class SmppBindHandler {
 
           bindType,
 
+          remoteAddress:
+            session.remoteAddress,
+
           maxConcurrentBinds:
             result.account.maxConcurrentBinds,
         },
@@ -290,7 +299,8 @@ export class SmppBindHandler {
 
       this.logger.error(
         {
-          err: error,
+          err:
+            error,
 
           sessionId:
             session.id,
@@ -299,6 +309,9 @@ export class SmppBindHandler {
             pdu.system_id,
 
           bindType,
+
+          remoteAddress:
+            session.remoteAddress,
         },
         "SMPP bind failed unexpectedly.",
       );

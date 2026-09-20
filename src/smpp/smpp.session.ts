@@ -6,7 +6,9 @@ import {
   Loggers,
 } from "@pague-co-uk/sms-gateway-telemetry";
 
-import type { SmppSession as SmppLibrarySession } from "smpp";
+import type {
+  SmppSession as SmppLibrarySession,
+} from "smpp";
 
 import {
   SMPP_SESSION_STATES,
@@ -17,28 +19,55 @@ import type {
   SmppBindType,
 } from "./types/smpp-bind.types.js";
 
-import type { SmppSessionInfo } from "./types/smpp.types.js";
+import type {
+  SmppSessionInfo,
+} from "./types/smpp.types.js";
+
+interface SmppProxyProtocolSession {
+  readonly remoteAddress:
+  | string
+  | null;
+
+  readonly proxyProtocolProxy:
+  | {
+    readonly address: string;
+    readonly port: number;
+  }
+  | false
+  | null;
+}
+
+type SmppLibrarySessionWithProxy =
+  SmppLibrarySession &
+  SmppProxyProtocolSession;
 
 export class SmppSession {
-  private readonly logger = Loggers.smpp;
+  private readonly logger =
+    Loggers.smpp;
 
-  private readonly sessionId = randomUUID();
+  private readonly sessionId =
+    randomUUID();
 
   private state: SmppSessionState =
     SMPP_SESSION_STATES.CONNECTING;
 
-  private systemId: string | undefined;
+  private systemId:
+    string | undefined;
 
-  private accountId: string | undefined;
+  private accountId:
+    string | undefined;
 
-  private clientId: string | undefined;
+  private clientId:
+    string | undefined;
 
-  private bindType: SmppBindType | undefined;
+  private bindType:
+    SmppBindType | undefined;
 
   private active = false;
 
   constructor(
-    private readonly session: SmppLibrarySession,
+    private readonly session:
+      SmppLibrarySession,
   ) {
     this.registerLifecycleHandlers();
   }
@@ -47,15 +76,18 @@ export class SmppSession {
     return this.sessionId;
   }
 
-  public get raw(): SmppLibrarySession {
+  public get raw():
+    SmppLibrarySession {
     return this.session;
   }
 
-  public get systemIdentifier(): string | undefined {
+  public get systemIdentifier():
+    string | undefined {
     return this.systemId;
   }
 
-  public get currentState(): SmppSessionState {
+  public get currentState():
+    SmppSessionState {
     return this.state;
   }
 
@@ -63,19 +95,71 @@ export class SmppSession {
     return this.session.socket;
   }
 
-  public get authenticatedAccountId(): string | undefined {
+  /**
+   * Original SMPP client IP address.
+   *
+   * When PROXY protocol detection is enabled,
+   * smpp populates session.remoteAddress with
+   * the original client address.
+   *
+   * The underlying socket.remoteAddress remains
+   * the address of the proxy, which is normally
+   * 127.0.0.1 in our architecture.
+   */
+  public get remoteAddress():
+    string | undefined {
+    const session =
+      this.session as
+      SmppLibrarySessionWithProxy;
+
+    return (
+      session.remoteAddress ??
+      this.socket.remoteAddress ??
+      undefined
+    );
+  }
+
+  /**
+   * Address of the PROXY protocol sender.
+   *
+   * In our architecture this should normally be
+   * 127.0.0.1 because Nginx connects locally
+   * to the SMPP server.
+   */
+  public get proxyAddress():
+    string | undefined {
+    const session =
+      this.session as
+      SmppLibrarySessionWithProxy;
+
+    if (
+      !session.proxyProtocolProxy
+    ) {
+      return undefined;
+    }
+
+    return session
+      .proxyProtocolProxy
+      .address;
+  }
+
+  public get authenticatedAccountId():
+    string | undefined {
     return this.accountId;
   }
 
-  public get authenticatedClientId(): string | undefined {
+  public get authenticatedClientId():
+    string | undefined {
     return this.clientId;
   }
 
-  public get authenticatedSystemId(): string | undefined {
+  public get authenticatedSystemId():
+    string | undefined {
     return this.systemId;
   }
 
-  public get currentBindType(): SmppBindType | undefined {
+  public get currentBindType():
+    SmppBindType | undefined {
     return this.bindType;
   }
 
@@ -96,8 +180,13 @@ export class SmppSession {
       {
         sessionId:
           this.sessionId,
+
         remoteAddress:
-          this.socket.remoteAddress,
+          this.remoteAddress,
+
+        proxyAddress:
+          this.proxyAddress,
+
         remotePort:
           this.socket.remotePort,
       },
@@ -137,14 +226,21 @@ export class SmppSession {
       {
         sessionId:
           this.sessionId,
+
         systemId:
           options.systemId,
+
         accountId:
           options.accountId,
+
         clientId:
           options.clientId,
+
         bindType:
           options.bindType,
+
+        remoteAddress:
+          this.remoteAddress,
       },
       "SMPP session bound.",
     );
@@ -165,14 +261,21 @@ export class SmppSession {
       {
         sessionId:
           this.sessionId,
+
         systemId:
           this.systemId,
+
         accountId:
           this.accountId,
+
         clientId:
           this.clientId,
+
         bindType:
           this.bindType,
+
+        remoteAddress:
+          this.remoteAddress,
       },
       "SMPP session unbound.",
     );
@@ -189,33 +292,49 @@ export class SmppSession {
     this.session.close();
   }
 
-  public sendSubmitSmResponse(options: {
-    readonly sequence_number: number;
-    readonly command_status: number;
-    readonly message_id: string;
-  }): void {
-    this.session.submit_sm_resp(options);
+  public sendSubmitSmResponse(
+    options: {
+      readonly sequence_number: number;
+      readonly command_status: number;
+      readonly message_id: string;
+    },
+  ): void {
+    this.session.submit_sm_resp(
+      options,
+    );
   }
 
-  public sendDeliverSmResponse(options: {
-    readonly sequence_number: number;
-    readonly command_status: number;
-  }): void {
-    this.session.deliver_sm_resp(options);
+  public sendDeliverSmResponse(
+    options: {
+      readonly sequence_number: number;
+      readonly command_status: number;
+    },
+  ): void {
+    this.session.deliver_sm_resp(
+      options,
+    );
   }
 
-  public sendEnquireLinkResponse(options: {
-    readonly sequence_number: number;
-    readonly command_status: number;
-  }): void {
-    this.session.enquire_link_resp(options);
+  public sendEnquireLinkResponse(
+    options: {
+      readonly sequence_number: number;
+      readonly command_status: number;
+    },
+  ): void {
+    this.session.enquire_link_resp(
+      options,
+    );
   }
 
-  public sendUnbindResponse(options: {
-    readonly sequence_number: number;
-    readonly command_status: number;
-  }): void {
-    this.session.unbind_resp(options);
+  public sendUnbindResponse(
+    options: {
+      readonly sequence_number: number;
+      readonly command_status: number;
+    },
+  ): void {
+    this.session.unbind_resp(
+      options,
+    );
   }
 
   public info(): SmppSessionInfo {
@@ -230,7 +349,7 @@ export class SmppSession {
         this.systemId,
 
       remoteAddress:
-        this.socket.remoteAddress,
+        this.remoteAddress,
 
       remotePort:
         this.socket.remotePort,
@@ -258,8 +377,12 @@ export class SmppSession {
         this.logger.error(
           {
             err: error,
+
             sessionId:
               this.sessionId,
+
+            remoteAddress:
+              this.remoteAddress,
           },
           "SMPP session error.",
         );
@@ -297,14 +420,21 @@ export class SmppSession {
       {
         sessionId:
           this.sessionId,
+
         systemId:
           this.systemId,
+
         accountId:
           this.accountId,
+
         clientId:
           this.clientId,
+
         bindType:
           this.bindType,
+
+        remoteAddress:
+          this.remoteAddress,
       },
       "SMPP session closed.",
     );

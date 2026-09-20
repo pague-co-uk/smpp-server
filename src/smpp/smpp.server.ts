@@ -12,6 +12,12 @@ import { SmppBindHandler } from "./smpp-bind.handler.js";
 import { SmppCommandHandler } from "./smpp-command.handler.js";
 import { SmppSessionManager } from "./smpp.session-manager.js";
 
+type PagueSmppServerOptions =
+  Parameters<typeof smpp.createServer>[0] & {
+    readonly enable_proxy_protocol_detection?:
+    boolean;
+  };
+
 @Injectable()
 export class SmppServer {
   private readonly logger =
@@ -46,11 +52,17 @@ export class SmppServer {
       port,
     } = this.config.smpp;
 
+    const serverOptions:
+      PagueSmppServerOptions = {
+      debug: false,
+
+      enable_proxy_protocol_detection:
+        true,
+    };
+
     this.server =
       smpp.createServer(
-        {
-          debug: false,
-        },
+        serverOptions,
         (session) => {
           const smppSession =
             this.sessionManager.create(
@@ -84,10 +96,13 @@ export class SmppServer {
                 smppSession.id,
 
               remoteAddress:
-                session.socket.remoteAddress,
+                smppSession.remoteAddress,
+
+              proxyAddress:
+                smppSession.proxyAddress,
 
               remotePort:
-                session.socket.remotePort,
+                smppSession.socket.remotePort,
             },
             "SMPP client connected.",
           );
@@ -104,6 +119,9 @@ export class SmppServer {
           {
             host,
             port,
+
+            proxyProtocolDetection:
+              true,
           },
           "SMPP TCP server listening.",
         );
