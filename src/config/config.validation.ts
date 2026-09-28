@@ -174,6 +174,11 @@ export const configValidationSchema =
         .min(1000)
         .default(60000),
 
+    SMPP_SUBMITTED_MESSAGE_TTL_MS:
+      Joi.number()
+        .integer()
+        .min(1000)
+        .default(86400000),
     // =========================================================================
     // Logging
     // =========================================================================

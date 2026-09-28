@@ -1,18 +1,32 @@
 import { Injectable } from "@nestjs/common";
 
-import { Loggers } from "@pague-co-uk/sms-gateway-telemetry";
+import {
+  Loggers,
+} from "@pague-co-uk/sms-gateway-telemetry";
 
-import type { SmppSession as SmppLibrarySession } from "smpp";
+import type {
+  SmppSession as SmppLibrarySession,
+} from "smpp";
 
-import { ClientDlr } from "./smpp-delivery-receipt.consumer.js";
-import { SmppSession } from "./smpp.session.js";
+import {
+  ClientDlr,
+} from "./smpp-delivery-receipt.consumer.js";
+
+import { AppConfigService } from "../config/config.service.js";
+import {
+  SmppSession,
+} from "./smpp.session.js";
 
 @Injectable()
 export class SmppSessionManager {
-  private readonly logger = Loggers.smpp;
+  private readonly logger =
+    Loggers.smpp;
 
   private readonly sessions =
-    new Map<string, SmppSession>();
+    new Map<
+      string,
+      SmppSession
+    >();
 
   /**
    * Tracks sessions that currently hold a bind slot
@@ -21,13 +35,24 @@ export class SmppSessionManager {
    * The Set contains session IDs.
    */
   private readonly boundSessionsByAccount =
-    new Map<string, Set<string>>();
+    new Map<
+      string,
+      Set<string>
+    >();
+
+  constructor(
+    private readonly config:
+      AppConfigService,
+  ) { }
 
   public create(
     session: SmppLibrarySession,
   ): SmppSession {
     const smppSession =
-      new SmppSession(session);
+      new SmppSession(
+        session,
+        this.config.smpp.submittedMessageTtlMs,
+      );
 
     this.sessions.set(
       smppSession.id,
@@ -54,6 +79,10 @@ export class SmppSessionManager {
 
         activeSessions:
           this.sessions.size,
+
+        submittedMessageTtlMs:
+          this.config.smpp
+            .submittedMessageTtlMs,
       },
       "SMPP session registered.",
     );
@@ -69,7 +98,8 @@ export class SmppSessionManager {
     );
   }
 
-  public values(): readonly SmppSession[] {
+  public values():
+    readonly SmppSession[] {
     return [
       ...this.sessions.values(),
     ];
@@ -151,9 +181,12 @@ export class SmppSessionManager {
     this.logger.debug(
       {
         sessionId,
+
         accountId,
+
         boundSessions:
           accountSessions.size,
+
         maxConcurrentBinds,
       },
       "SMPP bind slot reserved.",
@@ -174,7 +207,8 @@ export class SmppSessionManager {
       const [
         accountId,
         accountSessions,
-      ] of this.boundSessionsByAccount
+      ] of this
+        .boundSessionsByAccount
     ) {
       if (
         !accountSessions.delete(
@@ -198,7 +232,9 @@ export class SmppSessionManager {
       this.logger.debug(
         {
           sessionId,
+
           accountId,
+
           boundSessions,
         },
         "SMPP bind slot released.",
@@ -223,6 +259,7 @@ export class SmppSessionManager {
     this.logger.info(
       {
         sessionId,
+
         activeSessions:
           this.sessions.size,
       },
@@ -234,7 +271,8 @@ export class SmppSessionManager {
     receipt: ClientDlr,
   ): Promise<void> {
     for (
-      const session of this.sessions.values()
+      const session of
+      this.sessions.values()
     ) {
       if (
         !session.hasSubmittedMessage(
@@ -255,6 +293,14 @@ export class SmppSessionManager {
           receipt.status,
       });
 
+      /*
+       * SmppSession.sendDeliveryReceipt()
+       * removes the submitted-message metadata
+       * immediately after deliver_sm succeeds.
+       *
+       * We deliberately do not remove it here because
+       * SmppSession owns the metadata lifecycle.
+       */
       this.logger.info(
         {
           sessionId:
@@ -277,6 +323,9 @@ export class SmppSessionManager {
 
           status:
             receipt.status,
+
+          remainingSubmittedMessages:
+            session.getSubmittedMessageCount(),
         },
         "SMPP delivery receipt routed to client session.",
       );

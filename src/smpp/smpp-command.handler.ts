@@ -668,9 +668,27 @@ export class SmppCommandHandler {
         const messageId =
           result.publicId ?? "";
 
-        session.trackSubmittedMessage(
+        session.trackSubmittedMessage({
           messageId,
-        );
+
+          sourceAddrTon:
+            pdu.source_addr_ton ?? 0,
+
+          sourceAddrNpi:
+            pdu.source_addr_npi ?? 0,
+
+          sourceAddress:
+            pdu.source_addr ?? "",
+
+          destinationAddrTon:
+            pdu.dest_addr_ton ?? 0,
+
+          destinationAddrNpi:
+            pdu.dest_addr_npi ?? 0,
+
+          destinationAddress:
+            pdu.destination_addr ?? "",
+        });
 
         session.sendSubmitSmResponse({
           sequence_number:
@@ -821,9 +839,27 @@ export class SmppCommandHandler {
       const messageId =
         result.publicId ?? "";
 
-      session.trackSubmittedMessage(
+      session.trackSubmittedMessage({
         messageId,
-      );
+
+        sourceAddrTon:
+          reassembled.pdu.source_addr_ton ?? 0,
+
+        sourceAddrNpi:
+          reassembled.pdu.source_addr_npi ?? 0,
+
+        sourceAddress:
+          reassembled.pdu.source_addr ?? "",
+
+        destinationAddrTon:
+          reassembled.pdu.dest_addr_ton ?? 0,
+
+        destinationAddrNpi:
+          reassembled.pdu.dest_addr_npi ?? 0,
+
+        destinationAddress:
+          reassembled.pdu.destination_addr ?? "",
+      });
 
       /*
        * The API accepted ONE logical message.

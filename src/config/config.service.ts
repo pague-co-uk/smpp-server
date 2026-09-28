@@ -243,6 +243,11 @@ export class AppConfigService {
         this.config.getOrThrow<boolean>(
           "smpp.proxyProtocol",
         ),
+
+      submittedMessageTtlMs:
+        this.config.getOrThrow<number>(
+          "smpp.submittedMessageTtlMs",
+        ),
     };
   }
 }

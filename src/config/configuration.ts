@@ -215,5 +215,12 @@ export default () => ({
     proxyProtocol:
       process.env.SMPP_PROXY_PROTOCOL ===
       "true",
+
+    submittedMessageTtlMs:
+      Number.parseInt(
+        process.env.SMPP_SUBMITTED_MESSAGE_TTL_MS ??
+        "86400000",
+        10,
+      ),
   },
 });
