@@ -7,10 +7,11 @@ import {
   HealthModule,
 } from "./health/health.module.js";
 import { SmppModule } from "./smpp/smpp.module.js";
+import { QueueModule } from "./queue/queue.module.js";
 
 @Module({
   imports: [
-    HealthModule, ConfigModule, SmppModule
+    HealthModule, ConfigModule, SmppModule, QueueModule
   ],
 
   controllers: [],

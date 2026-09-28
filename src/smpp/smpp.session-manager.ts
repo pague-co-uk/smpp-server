@@ -4,6 +4,7 @@ import { Loggers } from "@pague-co-uk/sms-gateway-telemetry";
 
 import type { SmppSession as SmppLibrarySession } from "smpp";
 
+import { ClientDlr } from "./smpp-delivery-receipt.consumer.js";
 import { SmppSession } from "./smpp.session.js";
 
 @Injectable()
@@ -226,6 +227,75 @@ export class SmppSessionManager {
           this.sessions.size,
       },
       "SMPP session removed.",
+    );
+  }
+
+  public async sendDeliveryReceipt(
+    receipt: ClientDlr,
+  ): Promise<void> {
+    for (
+      const session of this.sessions.values()
+    ) {
+      if (
+        !session.hasSubmittedMessage(
+          receipt.publicId,
+        )
+      ) {
+        continue;
+      }
+
+      session.sendDeliveryReceipt({
+        messageId:
+          receipt.publicId,
+
+        providerMessageId:
+          receipt.providerMessageId,
+
+        status:
+          receipt.status,
+      });
+
+      this.logger.info(
+        {
+          sessionId:
+            session.id,
+
+          clientId:
+            session.authenticatedClientId,
+
+          accountId:
+            session.authenticatedAccountId,
+
+          systemId:
+            session.authenticatedSystemId,
+
+          publicId:
+            receipt.publicId,
+
+          providerMessageId:
+            receipt.providerMessageId,
+
+          status:
+            receipt.status,
+        },
+        "SMPP delivery receipt routed to client session.",
+      );
+
+      return;
+    }
+
+    this.logger.warn(
+      {
+        publicId:
+          receipt.publicId,
+
+        providerMessageId:
+          receipt.providerMessageId,
+
+        status:
+          receipt.status,
+      },
+      "No active SMPP session found for delivery receipt.",
     );
   }
 

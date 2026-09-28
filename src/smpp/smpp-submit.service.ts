@@ -382,8 +382,7 @@ export class SmppSubmitService {
     }
 
     /*
-     * Do not silently stringify unknown objects. Doing so was the source
-     * of the previous "[object Object]" submission problem and could hide
+     * Do not silently stringify unknown objects. Doing so can cause "[object Object]" submission problems and could hide
      * malformed SMPP payloads.
      */
     throw new Error(

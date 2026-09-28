@@ -25,21 +25,32 @@ import type {
 
 interface SmppProxyProtocolSession {
   readonly remoteAddress:
-  | string
-  | null;
+    | string
+    | null;
 
   readonly proxyProtocolProxy:
-  | {
-    readonly address: string;
-    readonly port: number;
-  }
-  | false
-  | null;
+    | {
+        readonly address: string;
+        readonly port: number;
+      }
+    | false
+    | null;
 }
 
 type SmppLibrarySessionWithProxy =
   SmppLibrarySession &
   SmppProxyProtocolSession;
+
+export type SmppDeliveryReceiptStatus =
+  | "SUCCESS"
+  | "FAILED"
+  | "UNKNOWN";
+
+export interface SmppDeliveryReceipt {
+  readonly messageId: string;
+  readonly status: SmppDeliveryReceiptStatus;
+  readonly providerMessageId: string;
+}
 
 export class SmppSession {
   private readonly logger =
@@ -64,6 +75,15 @@ export class SmppSession {
     SmppBindType | undefined;
 
   private active = false;
+
+  /**
+   * Message IDs accepted through this SMPP session.
+   *
+   * The key is the Pague public message ID returned to
+   * the ESME in submit_sm_resp.
+   */
+  private readonly submittedMessages =
+    new Set<string>();
 
   constructor(
     private readonly session:
@@ -95,17 +115,6 @@ export class SmppSession {
     return this.session.socket;
   }
 
-  /**
-   * Original SMPP client IP address.
-   *
-   * When PROXY protocol detection is enabled,
-   * smpp populates session.remoteAddress with
-   * the original client address.
-   *
-   * The underlying socket.remoteAddress remains
-   * the address of the proxy, which is normally
-   * 127.0.0.1 in our architecture.
-   */
   public get remoteAddress():
     string | undefined {
     const session =
@@ -119,13 +128,6 @@ export class SmppSession {
     );
   }
 
-  /**
-   * Address of the PROXY protocol sender.
-   *
-   * In our architecture this should normally be
-   * 127.0.0.1 because Nginx connects locally
-   * to the SMPP server.
-   */
   public get proxyAddress():
     string | undefined {
     const session =
@@ -281,6 +283,113 @@ export class SmppSession {
     );
   }
 
+  /**
+   * Register a message that was accepted through this
+   * SMPP session.
+   *
+   * The publicId is the message_id returned to the ESME
+   * in submit_sm_resp.
+   */
+  public trackSubmittedMessage(
+    publicId: string,
+  ): void {
+    if (!publicId) {
+      return;
+    }
+
+    this.submittedMessages.add(
+      publicId,
+    );
+  }
+
+  /**
+   * Determine whether this session submitted a message.
+   */
+  public hasSubmittedMessage(
+    publicId: string,
+  ): boolean {
+    return this.submittedMessages.has(
+      publicId,
+    );
+  }
+
+  /**
+   * Send a delivery receipt to the ESME.
+   */
+  public sendDeliveryReceipt(
+    receipt: SmppDeliveryReceipt,
+  ): void {
+    if (
+      this.state !==
+      SMPP_SESSION_STATES.BOUND
+    ) {
+      throw new Error(
+        `Cannot send delivery receipt on SMPP session ${this.sessionId}: session is not bound.`,
+      );
+    }
+
+    const status =
+      this.toSmppDeliveryStatus(
+        receipt.status,
+      );
+
+    const shortMessage =
+      [
+        `id:${receipt.messageId}`,
+        "sub:001",
+        "dlvrd:001",
+        `stat:${status}`,
+        "err:000",
+        "text:",
+      ].join(" ");
+
+    this.session.deliver_sm({
+      service_type: "",
+      source_addr_ton: 0,
+      source_addr_npi: 0,
+      source_addr: "",
+      dest_addr_ton: 0,
+      dest_addr_npi: 0,
+      destination_addr: "",
+      esm_class: 0x04,
+      protocol_id: 0,
+      priority_flag: 0,
+      schedule_delivery_time: "",
+      validity_period: "",
+      registered_delivery: 0,
+      replace_if_present_flag: 0,
+      data_coding: 0,
+      sm_default_msg_id: 0,
+      short_message: shortMessage,
+    });
+
+    this.logger.info(
+      {
+        sessionId:
+          this.sessionId,
+
+        clientId:
+          this.clientId,
+
+        accountId:
+          this.accountId,
+
+        systemId:
+          this.systemId,
+
+        messageId:
+          receipt.messageId,
+
+        providerMessageId:
+          receipt.providerMessageId,
+
+        status:
+          receipt.status,
+      },
+      "SMPP delivery receipt sent.",
+    );
+  }
+
   public close(): void {
     if (
       this.state ===
@@ -413,6 +522,8 @@ export class SmppSession {
   private handleClose(): void {
     this.deactivate();
 
+    this.submittedMessages.clear();
+
     this.state =
       SMPP_SESSION_STATES.CLOSED;
 
@@ -438,5 +549,20 @@ export class SmppSession {
       },
       "SMPP session closed.",
     );
+  }
+
+  private toSmppDeliveryStatus(
+    status: SmppDeliveryReceiptStatus,
+  ): "DELIVRD" | "UNDELIV" | "UNKNOWN" {
+    switch (status) {
+      case "SUCCESS":
+        return "DELIVRD";
+
+      case "FAILED":
+        return "UNDELIV";
+
+      case "UNKNOWN":
+        return "UNKNOWN";
+    }
   }
 }

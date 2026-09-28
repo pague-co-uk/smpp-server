@@ -47,6 +47,69 @@ export default () => ({
   },
 
   // ===========================================================================
+  // RabbitMQ
+  // ===========================================================================
+
+  rabbitmq: {
+    url:
+      process.env.RABBITMQ_URL ??
+      "",
+
+    connectionName:
+      process.env.RABBITMQ_CONNECTION_NAME ??
+      "smpp-server",
+
+    heartbeat:
+      Number.parseInt(
+        process.env.RABBITMQ_HEARTBEAT ??
+        "30",
+        10,
+      ),
+
+    reconnectDelay:
+      Number.parseInt(
+        process.env.RABBITMQ_RECONNECT_DELAY ??
+        "1000",
+        10,
+      ),
+
+    maxReconnectDelay:
+      Number.parseInt(
+        process.env.RABBITMQ_MAX_RECONNECT_DELAY ??
+        "30000",
+        10,
+      ),
+
+    maxReconnectAttempts:
+      Number.parseInt(
+        process.env.RABBITMQ_MAX_RECONNECT_ATTEMPTS ??
+        "0",
+        10,
+      ),
+
+    autoRecover:
+      process.env.RABBITMQ_AUTO_RECOVER !==
+      "false",
+
+    consumerPrefetch:
+      Number.parseInt(
+        process.env.RABBITMQ_CONSUMER_PREFETCH ??
+        "10",
+        10,
+      ),
+  },
+
+  // ===========================================================================
+  // Routing
+  // ===========================================================================
+
+  routing: {
+    clientDlrQueue:
+      process.env.CLIENT_DLR_QUEUE ??
+      "sms.client.delivery-receipt",
+  },
+
+  // ===========================================================================
   // Telemetry
   // ===========================================================================
 
@@ -116,7 +179,6 @@ export default () => ({
   // ===========================================================================
   // SMPP
   // ===========================================================================
-
   smpp: {
     host:
       process.env.SMPP_HOST ??
@@ -149,5 +211,9 @@ export default () => ({
         "60000",
         10,
       ),
+
+    proxyProtocol:
+      process.env.SMPP_PROXY_PROTOCOL ===
+      "true",
   },
 });

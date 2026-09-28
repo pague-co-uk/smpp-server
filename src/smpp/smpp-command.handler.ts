@@ -5,7 +5,9 @@ import {
   Loggers,
 } from "@pague-co-uk/sms-gateway-telemetry";
 
-import type { SmppPdu } from "smpp";
+import type {
+  SmppPdu,
+} from "smpp";
 
 import {
   SMPP_SESSION_STATES,
@@ -666,6 +668,10 @@ export class SmppCommandHandler {
         const messageId =
           result.publicId ?? "";
 
+        session.trackSubmittedMessage(
+          messageId,
+        );
+
         session.sendSubmitSmResponse({
           sequence_number:
             pdu.sequence_number,
@@ -814,6 +820,10 @@ export class SmppCommandHandler {
 
       const messageId =
         result.publicId ?? "";
+
+      session.trackSubmittedMessage(
+        messageId,
+      );
 
       /*
        * The API accepted ONE logical message.

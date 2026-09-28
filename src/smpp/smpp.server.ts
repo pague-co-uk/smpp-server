@@ -111,6 +111,7 @@ export class SmppServer {
     const {
       host,
       port,
+      proxyProtocol,
     } = this.config.smpp;
 
     this.server =
@@ -118,6 +119,7 @@ export class SmppServer {
         (socket) => {
           void this.handleConnection(
             socket,
+            proxyProtocol,
           );
         },
       );
@@ -146,8 +148,7 @@ export class SmppServer {
           {
             host,
             port,
-            proxyProtocol:
-              true,
+            proxyProtocol,
           },
           "SMPP TCP server listening.",
         );
@@ -157,15 +158,50 @@ export class SmppServer {
 
   private async handleConnection(
     socket: Socket,
+    proxyProtocol: boolean,
   ): Promise<void> {
     try {
-      const {
-        info,
-        remaining,
-      } =
-        await readSmppProxyProtocol(
-          socket,
-        );
+      let remoteAddress =
+        socket.remoteAddress ?? null;
+
+      let remotePort =
+        socket.remotePort ?? null;
+
+      let proxyAddress:
+        | string
+        | null =
+        null;
+
+      let proxyPort:
+        | number
+        | null =
+        null;
+
+      let remaining:
+        | Buffer =
+        Buffer.alloc(0);
+
+      if (proxyProtocol) {
+        const result =
+          await readSmppProxyProtocol(
+            socket,
+          );
+
+        remoteAddress =
+          result.info.remoteAddress;
+
+        remotePort =
+          result.info.remotePort;
+
+        proxyAddress =
+          result.info.proxyAddress;
+
+        proxyPort =
+          result.info.proxyPort;
+
+        remaining =
+          result.remaining;
+      }
 
       const rawSession =
         new smppRuntime.Session({
@@ -178,23 +214,28 @@ export class SmppServer {
         SmppLibrarySessionWithProxy;
 
       sessionWithProxy.remoteAddress =
-        info.remoteAddress;
+        remoteAddress;
 
       sessionWithProxy.remotePort =
-        info.remotePort;
+        remotePort;
 
       sessionWithProxy.proxyProtocolProxy =
-      {
-        address:
-          info.proxyAddress,
+        proxyProtocol &&
+          proxyAddress !== null &&
+          proxyPort !== null
+          ? {
+            address:
+              proxyAddress,
 
-        port:
-          info.proxyPort,
-      };
+            port:
+              proxyPort,
+          }
+          : false;
 
       /*
-       * The PROXY protocol header has
-       * already been consumed.
+       * When PROXY protocol is enabled,
+       * readSmppProxyProtocol() consumes
+       * the PROXY header.
        *
        * If the SMPP client sent the PROXY
        * header and the first SMPP PDU in
@@ -239,14 +280,11 @@ export class SmppServer {
           remoteAddress:
             session.remoteAddress,
 
-          remotePort:
-            info.remotePort,
+          remotePort,
 
-          proxyAddress:
-            session.proxyAddress,
+          proxyAddress,
 
-          proxyPort:
-            info.proxyPort,
+          proxyPort,
         },
         "SMPP client connected.",
       );

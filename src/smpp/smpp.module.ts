@@ -10,6 +10,7 @@ import { SmppSubmitService } from "./smpp-submit.service.js";
 import { SmppServer } from "./smpp.server.js";
 import { SmppSessionManager } from "./smpp.session-manager.js";
 import { SmppIpAllowlistService } from "./validation/smpp-ip-allowlist.service.js";
+import { SmppDeliveryReceiptConsumer } from "./smpp-delivery-receipt.consumer.js";
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { SmppIpAllowlistService } from "./validation/smpp-ip-allowlist.service.j
     SmppCommandHandler,
     SmppSessionManager,
     SmppServer,
+    SmppDeliveryReceiptConsumer
   ],
 
   exports: [

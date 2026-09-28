@@ -70,6 +70,67 @@ export class AppConfigService {
   }
 
   // =========================================================================
+  // RabbitMQ
+  // =========================================================================
+
+  get rabbitmq() {
+    return {
+      url:
+        this.config.getOrThrow<string>(
+          "rabbitmq.url",
+        ),
+
+      connectionName:
+        this.config.getOrThrow<string>(
+          "rabbitmq.connectionName",
+        ),
+
+      heartbeat:
+        this.config.getOrThrow<number>(
+          "rabbitmq.heartbeat",
+        ),
+
+      reconnectDelay:
+        this.config.getOrThrow<number>(
+          "rabbitmq.reconnectDelay",
+        ),
+
+      maxReconnectDelay:
+        this.config.getOrThrow<number>(
+          "rabbitmq.maxReconnectDelay",
+        ),
+
+      maxReconnectAttempts:
+        this.config.getOrThrow<number>(
+          "rabbitmq.maxReconnectAttempts",
+        ),
+
+      autoRecover:
+        this.config.getOrThrow<boolean>(
+          "rabbitmq.autoRecover",
+        ),
+
+      consumerPrefetch:
+        this.config.getOrThrow<number>(
+          "rabbitmq.consumerPrefetch",
+        ),
+    };
+  }
+
+  // =========================================================================
+  // Routing
+  // =========================================================================
+
+  get routing() {
+    return {
+      clientDlrQueue:
+        this.config.getOrThrow<string>(
+          "routing.clientDlrQueue",
+        ),
+    };
+  }
+
+  // =========================================================================
   // Telemetry
   // =========================================================================
 
@@ -176,6 +237,11 @@ export class AppConfigService {
       sessionTimeoutMs:
         this.config.getOrThrow<number>(
           "smpp.sessionTimeoutMs",
+        ),
+
+      proxyProtocol:
+        this.config.getOrThrow<boolean>(
+          "smpp.proxyProtocol",
         ),
     };
   }

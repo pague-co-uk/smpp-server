@@ -13,7 +13,7 @@
     "rootDir": "./src",
     "baseUrl": "./",
     "ignoreDeprecations": "6.0",
-    "incremental": true,
+    "incremental": false,
     "skipLibCheck": true,
     "strict": true,
     "types": [

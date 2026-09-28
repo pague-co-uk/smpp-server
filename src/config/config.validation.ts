@@ -2,6 +2,7 @@ import Joi from "joi";
 
 export const configValidationSchema =
   Joi.object({
+
     // =========================================================================
     // Application
     // =========================================================================
@@ -12,6 +13,7 @@ export const configValidationSchema =
           "development",
           "test",
           "production",
+          "staging",
         )
         .default("development"),
 
@@ -64,6 +66,80 @@ export const configValidationSchema =
         .trim()
         .min(1)
         .required(),
+
+    // =========================================================================
+    // RabbitMQ
+    // =========================================================================
+
+    RABBITMQ_URL:
+      Joi.string()
+        .uri({
+          scheme: [
+            "amqp",
+            "amqps",
+          ],
+        })
+        .required(),
+
+    RABBITMQ_CONNECTION_NAME:
+      Joi.string()
+        .trim()
+        .min(1)
+        .default("smpp-server"),
+
+    RABBITMQ_HEARTBEAT:
+      Joi.number()
+        .integer()
+        .min(0)
+        .default(30),
+
+    RABBITMQ_RECONNECT_DELAY:
+      Joi.number()
+        .integer()
+        .min(100)
+        .default(1000),
+
+    RABBITMQ_MAX_RECONNECT_DELAY:
+      Joi.number()
+        .integer()
+        .min(100)
+        .default(30000),
+
+    RABBITMQ_MAX_RECONNECT_ATTEMPTS:
+      Joi.number()
+        .integer()
+        .min(0)
+        .default(0),
+
+    RABBITMQ_AUTO_RECOVER:
+      Joi.boolean()
+        .truthy(
+          "true",
+          "1",
+        )
+        .falsy(
+          "false",
+          "0",
+        )
+        .default(true),
+
+    RABBITMQ_CONSUMER_PREFETCH:
+      Joi.number()
+        .integer()
+        .min(1)
+        .default(10),
+
+    // =========================================================================
+    // Routing
+    // =========================================================================
+
+    CLIENT_DLR_QUEUE:
+      Joi.string()
+        .trim()
+        .min(1)
+        .default(
+          "sms.client.delivery-receipt",
+        ),
 
     // =========================================================================
     // SMPP
@@ -200,4 +276,5 @@ export const configValidationSchema =
           "0",
         )
         .default(false),
+
   });
