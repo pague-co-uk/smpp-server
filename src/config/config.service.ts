@@ -123,9 +123,14 @@ export class AppConfigService {
 
   get routing() {
     return {
-      clientDlrQueue:
+      clientDlrExchange:
         this.config.getOrThrow<string>(
-          "routing.clientDlrQueue",
+          "routing.clientDlrExchange",
+        ),
+
+      clientDlrSmppQueue:
+        this.config.getOrThrow<string>(
+          "routing.clientDlrSmppQueue",
         ),
     };
   }

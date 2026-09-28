@@ -133,13 +133,17 @@ export const configValidationSchema =
     // Routing
     // =========================================================================
 
-    CLIENT_DLR_QUEUE:
+    ROUTING_CLIENT_DLR_EXCHANGE:
       Joi.string()
         .trim()
         .min(1)
-        .default(
-          "sms.client.delivery-receipt",
-        ),
+        .default("sms.client.dlr"),
+
+    ROUTING_CLIENT_DLR_SMPP_QUEUE:
+      Joi.string()
+        .trim()
+        .min(1)
+        .default("sms.client.dlr.smpp"),
 
     // =========================================================================
     // SMPP
@@ -174,11 +178,24 @@ export const configValidationSchema =
         .min(1000)
         .default(60000),
 
+    SMPP_PROXY_PROTOCOL:
+      Joi.boolean()
+        .truthy(
+          "true",
+          "1",
+        )
+        .falsy(
+          "false",
+          "0",
+        )
+        .default(false),
+
     SMPP_SUBMITTED_MESSAGE_TTL_MS:
       Joi.number()
         .integer()
         .min(1000)
         .default(86400000),
+
     // =========================================================================
     // Logging
     // =========================================================================

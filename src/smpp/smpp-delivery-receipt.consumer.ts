@@ -42,8 +42,8 @@ export type ClientDlrStatus =
 @Injectable()
 export class SmppDeliveryReceiptConsumer
   implements
-  OnModuleInit,
-  OnModuleDestroy {
+    OnModuleInit,
+    OnModuleDestroy {
   private readonly logger =
     getComponentLogger(
       SmppDeliveryReceiptConsumer.name,
@@ -70,11 +70,15 @@ export class SmppDeliveryReceiptConsumer
   async onModuleInit(): Promise<void> {
     this.running = true;
 
+    const exchange =
+      this.config.routing.clientDlrExchange;
+
     const queue =
-      this.config.routing.clientDlrQueue;
+      this.config.routing.clientDlrSmppQueue;
 
     this.logger.info(
       {
+        exchange,
         queue,
       },
       "SMPP delivery receipt consumer starting.",
@@ -85,6 +89,7 @@ export class SmppDeliveryReceiptConsumer
 
       this.logger.info(
         {
+          exchange,
           queue,
 
           queueClientState:
@@ -97,12 +102,47 @@ export class SmppDeliveryReceiptConsumer
 
       this.logger.error(
         {
+          exchange,
           queue,
 
           err:
             error,
         },
         "SMPP delivery receipt consumer failed to connect to RabbitMQ.",
+      );
+
+      throw error;
+    }
+
+    try {
+      await this.queue.bindQueueToExchange(
+        queue,
+        exchange,
+        "",
+        {
+          durable: true,
+        },
+      );
+
+      this.logger.info(
+        {
+          exchange,
+          queue,
+        },
+        "SMPP delivery receipt queue bound to client DLR exchange.",
+      );
+    } catch (error) {
+      recordException(error);
+
+      this.logger.error(
+        {
+          exchange,
+          queue,
+
+          err:
+            error,
+        },
+        "SMPP delivery receipt consumer failed to bind queue to client DLR exchange.",
       );
 
       throw error;
@@ -128,6 +168,7 @@ export class SmppDeliveryReceiptConsumer
 
       this.logger.info(
         {
+          exchange,
           queue,
 
           consumerTag:
@@ -140,6 +181,7 @@ export class SmppDeliveryReceiptConsumer
 
       this.logger.error(
         {
+          exchange,
           queue,
 
           err:
@@ -157,8 +199,13 @@ export class SmppDeliveryReceiptConsumer
 
     this.logger.info(
       {
+        exchange:
+          this.config.routing
+            .clientDlrExchange,
+
         queue:
-          this.config.routing.clientDlrQueue,
+          this.config.routing
+            .clientDlrSmppQueue,
       },
       "SMPP delivery receipt consumer stopped.",
     );
@@ -188,7 +235,12 @@ export class SmppDeliveryReceiptConsumer
             dlr.status,
 
           "messaging.destination":
-            this.config.routing.clientDlrQueue,
+            this.config.routing
+              .clientDlrSmppQueue,
+
+          "messaging.exchange":
+            this.config.routing
+              .clientDlrExchange,
         });
 
         this.logger.info(
@@ -204,6 +256,14 @@ export class SmppDeliveryReceiptConsumer
 
             status:
               dlr.status,
+
+            queue:
+              this.config.routing
+                .clientDlrSmppQueue,
+
+            exchange:
+              this.config.routing
+                .clientDlrExchange,
           },
           "Client delivery receipt received.",
         );

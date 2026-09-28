@@ -104,9 +104,13 @@ export default () => ({
   // ===========================================================================
 
   routing: {
-    clientDlrQueue:
-      process.env.CLIENT_DLR_QUEUE ??
-      "sms.client.delivery-receipt",
+    clientDlrExchange:
+      process.env.ROUTING_CLIENT_DLR_EXCHANGE ??
+      "sms.client.dlr",
+
+    clientDlrSmppQueue:
+      process.env.ROUTING_CLIENT_DLR_SMPP_QUEUE ??
+      "sms.client.dlr.smpp",
   },
 
   // ===========================================================================
@@ -179,6 +183,7 @@ export default () => ({
   // ===========================================================================
   // SMPP
   // ===========================================================================
+
   smpp: {
     host:
       process.env.SMPP_HOST ??
