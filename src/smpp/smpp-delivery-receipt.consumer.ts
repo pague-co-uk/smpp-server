@@ -22,7 +22,10 @@ import {
 import {
   QUEUE_CLIENT,
 } from "../queue/constants/queue.constants.js";
-import { SmppSessionManager } from "./smpp.session-manager.js";
+
+import {
+  SmppSessionManager,
+} from "./smpp.session-manager.js";
 
 export interface ClientDlr {
   messageId: string;
@@ -83,6 +86,7 @@ export class SmppDeliveryReceiptConsumer
       this.logger.info(
         {
           queue,
+
           queueClientState:
             this.queue.currentState,
         },
@@ -94,6 +98,7 @@ export class SmppDeliveryReceiptConsumer
       this.logger.error(
         {
           queue,
+
           err:
             error,
         },
@@ -118,12 +123,13 @@ export class SmppDeliveryReceiptConsumer
             await this.handleDeliveryReceipt(
               dlr,
             );
-          }
+          },
         );
 
       this.logger.info(
         {
           queue,
+
           consumerTag:
             consumer.consumerTag,
         },
@@ -135,6 +141,7 @@ export class SmppDeliveryReceiptConsumer
       this.logger.error(
         {
           queue,
+
           err:
             error,
         },
@@ -201,10 +208,60 @@ export class SmppDeliveryReceiptConsumer
           "Client delivery receipt received.",
         );
 
+        /*
+         * Snapshot the active SMPP sessions before attempting
+         * correlation. This lets us see whether the originating
+         * client is still connected at the moment the DLR arrives.
+         */
+        this.logger.info(
+          {
+            messageId:
+              dlr.messageId,
+
+            publicId:
+              dlr.publicId,
+
+            providerMessageId:
+              dlr.providerMessageId,
+
+            status:
+              dlr.status,
+
+            activeSessionCount:
+              this.sessions.values().length,
+
+            activeSessions:
+              this.sessions.getActiveSessionDiagnostics(),
+          },
+          "Active SMPP sessions during delivery receipt lookup.",
+        );
+
         try {
-          await this.sessions.sendDeliveryReceipt(
-            dlr,
-          );
+          const sent =
+            await this.sessions.sendDeliveryReceipt(
+              dlr,
+            );
+
+          if (!sent) {
+            this.logger.warn(
+              {
+                messageId:
+                  dlr.messageId,
+
+                publicId:
+                  dlr.publicId,
+
+                providerMessageId:
+                  dlr.providerMessageId,
+
+                status:
+                  dlr.status,
+              },
+              "Client delivery receipt could not be associated with an active SMPP session.",
+            );
+
+            return;
+          }
 
           this.logger.info(
             {

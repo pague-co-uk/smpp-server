@@ -17,6 +17,25 @@ import {
   SmppSession,
 } from "./smpp.session.js";
 
+interface SmppSessionSocketDiagnostics {
+  readonly remoteAddress: string | null;
+  readonly remotePort: number | null;
+  readonly localAddress: string | null;
+  readonly localPort: number | null;
+}
+
+interface ActiveSmppSessionDiagnostics {
+  readonly sessionId: string;
+  readonly clientId: string | null;
+  readonly accountId: string | null;
+  readonly systemId: string | null;
+  readonly remoteAddress: string | null;
+  readonly remotePort: number | null;
+  readonly localAddress: string | null;
+  readonly localPort: number | null;
+  readonly submittedMessageCount: number;
+}
+
 @Injectable()
 export class SmppSessionManager {
   private readonly logger =
@@ -103,6 +122,194 @@ export class SmppSessionManager {
     return [
       ...this.sessions.values(),
     ];
+  }
+
+  /**
+   * Returns diagnostic information for every
+   * currently active SMPP session.
+   *
+   * This is intentionally read-only and exists
+   * to make session/message correlation visible
+   * while troubleshooting DLR delivery.
+   */
+  public getActiveSessionDiagnostics():
+    readonly ActiveSmppSessionDiagnostics[] {
+    return [
+      ...this.sessions.values(),
+    ].map(
+      (session) => {
+        const socket =
+          this.getSessionSocketDiagnostics(
+            session,
+          );
+
+        return {
+          sessionId:
+            session.id,
+
+          clientId:
+            session.authenticatedClientId ??
+            null,
+
+          accountId:
+            session.authenticatedAccountId ??
+            null,
+
+          systemId:
+            session.authenticatedSystemId ??
+            null,
+
+          remoteAddress:
+            socket.remoteAddress,
+
+          remotePort:
+            socket.remotePort,
+
+          localAddress:
+            socket.localAddress,
+
+          localPort:
+            socket.localPort,
+
+          submittedMessageCount:
+            session.getSubmittedMessageCount(),
+        };
+      },
+    );
+  }
+
+  /**
+   * Logs all currently active sessions and indicates
+   * which session, if any, owns the supplied publicId.
+   *
+   * This is specifically useful when investigating
+   * delivery-receipt correlation.
+   */
+  public logSessionOwnership(
+    publicId: string,
+  ): void {
+    const sessions =
+      [
+        ...this.sessions.values(),
+      ].map(
+        (session) => {
+          const socket =
+            this.getSessionSocketDiagnostics(
+              session,
+            );
+
+          const ownsMessage =
+            session.hasSubmittedMessage(
+              publicId,
+            );
+
+          return {
+            sessionId:
+              session.id,
+
+            clientId:
+              session.authenticatedClientId ??
+              null,
+
+            accountId:
+              session.authenticatedAccountId ??
+              null,
+
+            systemId:
+              session.authenticatedSystemId ??
+              null,
+
+            remoteAddress:
+              socket.remoteAddress,
+
+            remotePort:
+              socket.remotePort,
+
+            localAddress:
+              socket.localAddress,
+
+            localPort:
+              socket.localPort,
+
+            ownsMessage,
+
+            submittedMessageCount:
+              session.getSubmittedMessageCount(),
+          };
+        },
+      );
+
+    this.logger.info(
+      {
+        publicId,
+
+        activeSessionCount:
+          sessions.length,
+
+        sessions,
+      },
+      "SMPP session ownership diagnostic.",
+    );
+  }
+
+  /**
+   * Gets diagnostic socket information from the
+   * underlying SMPP library session.
+   *
+   * The local SmppSession abstraction does not expose
+   * socket address properties, so we deliberately read
+   * these values defensively from the underlying session.
+   */
+  private getSessionSocketDiagnostics(
+    session: SmppSession,
+  ): SmppSessionSocketDiagnostics {
+    const candidate =
+      session as unknown as {
+        session?: {
+          socket?: {
+            remoteAddress?: unknown;
+            remotePort?: unknown;
+            localAddress?: unknown;
+            localPort?: unknown;
+          };
+        };
+        socket?: {
+          remoteAddress?: unknown;
+          remotePort?: unknown;
+          localAddress?: unknown;
+          localPort?: unknown;
+        };
+      };
+
+    const socket =
+      candidate.socket ??
+      candidate.session?.socket;
+
+    return {
+      remoteAddress:
+        typeof socket?.remoteAddress ===
+          "string"
+          ? socket.remoteAddress
+          : null,
+
+      remotePort:
+        typeof socket?.remotePort ===
+          "number"
+          ? socket.remotePort
+          : null,
+
+      localAddress:
+        typeof socket?.localAddress ===
+          "string"
+          ? socket.localAddress
+          : null,
+
+      localPort:
+        typeof socket?.localPort ===
+          "number"
+          ? socket.localPort
+          : null,
+    };
   }
 
   /**
@@ -269,18 +476,106 @@ export class SmppSessionManager {
 
   public async sendDeliveryReceipt(
     receipt: ClientDlr,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    this.logger.info(
+      {
+        messageId:
+          receipt.messageId,
+
+        publicId:
+          receipt.publicId,
+
+        providerMessageId:
+          receipt.providerMessageId,
+
+        status:
+          receipt.status,
+
+        activeSessionCount:
+          this.sessions.size,
+      },
+      "Beginning SMPP delivery receipt session lookup.",
+    );
+
+    /*
+     * This is the most important diagnostic log.
+     *
+     * It records every active SMPP session and whether
+     * that session currently owns the DLR publicId.
+     */
+    this.logSessionOwnership(
+      receipt.publicId,
+    );
+
     for (
       const session of
       this.sessions.values()
     ) {
-      if (
-        !session.hasSubmittedMessage(
+      const ownsMessage =
+        session.hasSubmittedMessage(
           receipt.publicId,
-        )
-      ) {
+        );
+
+      this.logger.debug(
+        {
+          sessionId:
+            session.id,
+
+          clientId:
+            session.authenticatedClientId,
+
+          accountId:
+            session.authenticatedAccountId,
+
+          systemId:
+            session.authenticatedSystemId,
+
+          publicId:
+            receipt.publicId,
+
+          providerMessageId:
+            receipt.providerMessageId,
+
+          ownsMessage,
+
+          submittedMessageCount:
+            session.getSubmittedMessageCount(),
+        },
+        "Checking SMPP session for delivery receipt ownership.",
+      );
+
+      if (!ownsMessage) {
         continue;
       }
+
+      this.logger.info(
+        {
+          sessionId:
+            session.id,
+
+          clientId:
+            session.authenticatedClientId,
+
+          accountId:
+            session.authenticatedAccountId,
+
+          systemId:
+            session.authenticatedSystemId,
+
+          publicId:
+            receipt.publicId,
+
+          providerMessageId:
+            receipt.providerMessageId,
+
+          status:
+            receipt.status,
+
+          submittedMessageCount:
+            session.getSubmittedMessageCount(),
+        },
+        "Matching SMPP session found for delivery receipt.",
+      );
 
       session.sendDeliveryReceipt({
         messageId:
@@ -330,11 +625,14 @@ export class SmppSessionManager {
         "SMPP delivery receipt routed to client session.",
       );
 
-      return;
+      return true;
     }
 
     this.logger.warn(
       {
+        messageId:
+          receipt.messageId,
+
         publicId:
           receipt.publicId,
 
@@ -343,9 +641,17 @@ export class SmppSessionManager {
 
         status:
           receipt.status,
+
+        activeSessionCount:
+          this.sessions.size,
+
+        activeSessions:
+          this.getActiveSessionDiagnostics(),
       },
       "No active SMPP session found for delivery receipt.",
     );
+
+    return false;
   }
 
   public async closeAll(): Promise<void> {
